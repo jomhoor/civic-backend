@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, Param, UseGuards, Req } from '@nestjs/common';
 import { ResponsesService } from './responses.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { IsString, IsNumber, IsOptional, IsArray, ValidateNested } from 'class-validator';
@@ -42,5 +42,14 @@ export class ResponsesController {
   async getUserResponses(@Req() req: any, @Query('userId') fallbackId?: string) {
     const userId = req.user?.userId ?? fallbackId;
     return this.responsesService.getUserResponses(userId);
+  }
+
+  @Delete('questionnaire/:questionnaireId')
+  async resetForQuestionnaire(
+    @Req() req: any,
+    @Param('questionnaireId') questionnaireId: string,
+  ) {
+    const userId = req.user?.userId;
+    return this.responsesService.resetForQuestionnaire(userId, questionnaireId);
   }
 }

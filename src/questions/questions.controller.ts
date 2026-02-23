@@ -6,10 +6,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
 
-  /** Public — no auth needed for calibration questions */
+  /** Returns calibration questions, optionally filtered by user's answered questions */
+  @UseGuards(JwtAuthGuard)
   @Get('calibration')
-  async getCalibrationQuestions(@Query('questionnaireId') questionnaireId?: string) {
-    return this.questionsService.getCalibrationQuestions(questionnaireId);
+  async getCalibrationQuestions(
+    @Req() req: any,
+    @Query('questionnaireId') questionnaireId?: string,
+  ) {
+    const userId = req.user?.userId;
+    return this.questionsService.getCalibrationQuestions(questionnaireId, userId);
   }
 
   /** Protected — returns user-specific next questions */

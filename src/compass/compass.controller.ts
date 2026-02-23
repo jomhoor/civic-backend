@@ -2,11 +2,22 @@ import { Controller, Get, Post, Body, Query, Param, UseGuards, Req, NotFoundExce
 import { CompassService } from './compass.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@UseGuards(JwtAuthGuard)
 @Controller('compass')
 export class CompassController {
   constructor(private readonly compassService: CompassService) {}
 
+  /**
+   * Public profile endpoint — returns a user's compass + truncated wallet address.
+   * No authentication required so profiles can be shared.
+   */
+  @Get('profile/:userId')
+  async getPublicProfile(@Param('userId') userId: string) {
+    const user = await this.compassService.getUserPublicProfile(userId);
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get()
   async getCurrentCompass(
     @Req() req: any,
@@ -17,6 +28,7 @@ export class CompassController {
     return this.compassService.getCurrentCompass(userId, questionnaireId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('snapshot')
   async saveSnapshot(
     @Req() req: any,
@@ -26,6 +38,7 @@ export class CompassController {
     return this.compassService.saveSnapshot(userId, body.snapshotName, body.questionnaireId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('history')
   async getHistory(
     @Req() req: any,
@@ -36,6 +49,7 @@ export class CompassController {
     return this.compassService.getHistory(userId, questionnaireId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('snapshot/:id')
   async getSnapshot(@Param('id') id: string) {
     const snapshot = await this.compassService.getSnapshot(id);
@@ -43,6 +57,7 @@ export class CompassController {
     return snapshot;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('diff')
   async diffSnapshots(@Query('id1') id1: string, @Query('id2') id2: string) {
     const diff = await this.compassService.diffSnapshots(id1, id2);
@@ -50,12 +65,14 @@ export class CompassController {
     return diff;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('frequency')
   async getFrequency(@Req() req: any) {
     const userId = req.user?.userId;
     return this.compassService.getFrequencyPreference(userId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('frequency')
   async setFrequency(
     @Req() req: any,

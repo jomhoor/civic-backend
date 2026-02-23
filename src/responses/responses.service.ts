@@ -72,4 +72,30 @@ export class ResponsesService {
 
     return axisCounts;
   }
+
+  /**
+   * Delete all user responses for questions that belong to a specific questionnaire.
+   * Used when a user wants to retake a questionnaire from scratch.
+   */
+  async resetForQuestionnaire(userId: string, questionnaireId: string) {
+    // Find all question IDs belonging to this questionnaire
+    const questions = await this.prisma.question.findMany({
+      where: { questionnaireId, active: true },
+      select: { id: true },
+    });
+    const questionIds = questions.map((q) => q.id);
+
+    if (questionIds.length === 0) {
+      return { deleted: 0 };
+    }
+
+    const result = await this.prisma.userResponse.deleteMany({
+      where: {
+        userId,
+        questionId: { in: questionIds },
+      },
+    });
+
+    return { deleted: result.count, questionnaireId };
+  }
 }

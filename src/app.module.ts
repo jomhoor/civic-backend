@@ -13,6 +13,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { QuestionnairesModule } from './questionnaires/questionnaires.module';
+import { PokeModule } from './poke/poke.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { QuestionnairesModule } from './questionnaires/questionnaires.module';
     SchedulerModule,
     MatchmakingModule,
     AnalyticsModule,
+    PokeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

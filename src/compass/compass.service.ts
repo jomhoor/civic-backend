@@ -83,6 +83,34 @@ export class CompassService {
   }
 
   /**
+   * Public profile: returns compass dimensions + truncated wallet address.
+   */
+  async getUserPublicProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, walletAddress: true, displayName: true, createdAt: true },
+    });
+    if (!user) return null;
+
+    const { dimensions, confidence } = await this.calculateCompass(userId);
+
+    // Truncate wallet for privacy: 0x1a2B...9f4C
+    const wa = user.walletAddress;
+    const truncatedWallet = wa.length > 12
+      ? `${wa.slice(0, 6)}...${wa.slice(-4)}`
+      : wa;
+
+    return {
+      id: user.id,
+      wallet: truncatedWallet,
+      displayName: user.displayName,
+      createdAt: user.createdAt,
+      dimensions,
+      confidence,
+    };
+  }
+
+  /**
    * Generate a human-readable changelog comparing two dimension sets.
    */
   private generateChangeLog(

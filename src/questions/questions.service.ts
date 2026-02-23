@@ -6,10 +6,11 @@ export class QuestionsService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Get 8 calibration questions — one per axis.
+   * Get calibration questions — one per axis.
    * If questionnaireId is provided, only pick from that questionnaire.
+   * If userId is provided, filter out already-answered questions.
    */
-  async getCalibrationQuestions(questionnaireId?: string) {
+  async getCalibrationQuestions(questionnaireId?: string, userId?: string) {
     const where: any = { active: true };
     if (questionnaireId) where.questionnaireId = questionnaireId;
 
@@ -17,6 +18,16 @@ export class QuestionsService {
       where,
       orderBy: { order: 'asc' },
     });
+
+    // If userId provided, get already-answered question IDs
+    let answeredSet = new Set<string>();
+    if (userId) {
+      const answered = await this.prisma.userResponse.findMany({
+        where: { userId },
+        select: { questionId: true },
+      });
+      answeredSet = new Set(answered.map((r) => r.questionId));
+    }
 
     const axes = [
       'economy',
@@ -32,9 +43,9 @@ export class QuestionsService {
     const picked: typeof allActive = [];
     for (const axis of axes) {
       const match = allActive.find(
-        (q: { weights: unknown }) => {
+        (q: { id: string; weights: unknown }) => {
           const w = q.weights as Record<string, number>;
-          return axis in w && Math.abs(w[axis]) >= 0.5;
+          return axis in w && Math.abs(w[axis]) >= 0.5 && !answeredSet.has(q.id);
         },
       );
       if (match && !picked.includes(match)) {
@@ -108,7 +119,8 @@ export class QuestionsService {
 
   /**
    * Seed all questionnaires and their questions.
-   * Creates 3 questionnaires: Civic Compass (80), Quick Compass (16), Digital Age Dilemmas (24).
+   * Creates 5 questionnaires: Civic Compass (80), Quick Compass (16), Digital Age Dilemmas (24),
+   * The Political Compass (62), 9 Axes Values (36).
    */
   async seedCalibrationQuestions(force = false) {
     if (force) {
@@ -131,8 +143,9 @@ export class QuestionsService {
         titleFa: 'قطب‌نمای مدنی',
         description: 'The comprehensive 80-question political compass covering all 8 axes of civic identity.',
         descriptionFa: 'قطب‌نمای جامع ۸۰ سؤاله که تمام ۸ بُعد هویت مدنی را پوشش می‌دهد.',
-        icon: '🧭',
+        icon: 'Compass',
         questionCount: 80,
+        active: false,
         order: 1,
       },
     });
@@ -144,8 +157,9 @@ export class QuestionsService {
         titleFa: 'قطب‌نمای سریع',
         description: 'A fast 16-question assessment — 2 per axis. Get your civic snapshot in minutes.',
         descriptionFa: 'ارزیابی سریع ۱۶ سؤاله — ۲ سؤال در هر محور. در چند دقیقه تصویر مدنی خود را بگیرید.',
-        icon: '⚡',
+        icon: 'Zap',
         questionCount: 16,
+        active: false,
         order: 2,
       },
     });
@@ -157,9 +171,40 @@ export class QuestionsService {
         titleFa: 'معضلات عصر دیجیتال',
         description: 'Deep dive into technology, AI, digital rights, crypto, and online governance — 24 questions.',
         descriptionFa: 'بررسی عمیق فناوری، هوش مصنوعی، حقوق دیجیتال، رمزارز و حکمرانی آنلاین — ۲۴ سؤال.',
-        icon: '💻',
+        icon: 'Monitor',
         questionCount: 24,
+        active: false,
         order: 3,
+      },
+    });
+
+    const politicalCompass = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'political-compass',
+        title: 'The Political Compass',
+        titleFa: 'قطب‌نمای سیاسی',
+        description: 'The classic two-axis political compass: Economic Left↔Right and Social Libertarian↔Authoritarian. 62 propositions.',
+        descriptionFa: 'قطب‌نمای سیاسی کلاسیک دو محوری: اقتصاد چپ↔راست و اجتماعی آزادی‌خواه↔اقتدارگرا. ۶۲ گزاره.',
+        icon: 'Map',
+        questionCount: 62,
+        order: 4,
+      },
+    });
+
+    // 9Axes Political Values — inspired by the 9Axes quiz (MIT License, based on 8values).
+    // 9 conceptual axes mapped onto our 8-axis system. 36 original propositions (4 per concept).
+    // Original: https://9axes.github.io/ | License: MIT (Copyright © 2017 8values)
+    const nineAxes = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'nine-axes',
+        title: '9 Axes Values',
+        titleFa: 'ارزش‌های ۹ محور',
+        description: 'Evaluate your political values across 9 dimensions — from federalism to multiculturalism. 36 questions inspired by the open-source 9Axes quiz.',
+        descriptionFa: 'ارزش‌های سیاسی خود را در ۹ بُعد بسنجید — از فدرالیسم تا چندفرهنگی. ۳۶ سؤال الهام‌گرفته از آزمون متن‌باز ۹ محور.',
+        icon: 'BarChart3',
+        questionCount: 36,
+        active: false,
+        order: 5,
       },
     });
 
@@ -321,8 +366,139 @@ export class QuestionsService {
       { text: 'Brain-computer interfaces should be available to the public as soon as they are viable.', weights: { technology: 0.8 }, order: 24 },
     ];
 
+    // ── The Political Compass — 62 propositions ──
+    // Two-axis model: Economic Left↔Right (economy axis) and
+    // Social Libertarian↔Authoritarian (civil_liberties, governance, society axes).
+    // Scoring: agree/strongly-agree with a proposition shifts in the direction of its weights.
+    // Negative economy = economic left; positive economy = economic right.
+    // Negative civil_liberties/governance/society = authoritarian; positive = libertarian.
+    const politicalCompassPropositions = [
+      // Page 1 — Globalisation, patriotism, class, economics
+      { text: 'If economic globalisation is inevitable, it should primarily serve humanity rather than the interests of trans-national corporations.', weights: { economy: -0.8, diplomacy: 0.3 }, order: 1 },
+      { text: "I'd always support my country, whether it was right or wrong.", weights: { diplomacy: -0.7, civil_liberties: -0.3 }, order: 2 },
+      { text: "No one chooses their country of birth, so it's foolish to be proud of it.", weights: { society: 0.5, diplomacy: 0.3 }, order: 3 },
+      { text: 'Our race has many superior qualities, compared with other races.', weights: { society: -0.9, civil_liberties: -0.3 }, order: 4 },
+      { text: 'The enemy of my enemy is my friend.', weights: { diplomacy: -0.5 }, order: 5 },
+      { text: 'Military action that defies international law is sometimes justified.', weights: { diplomacy: -0.7, civil_liberties: -0.3 }, order: 6 },
+      { text: 'There is now a worrying fusion of information and entertainment.', weights: { society: -0.3, civil_liberties: -0.2 }, order: 7 },
+      // Page 2 — Economy & class
+      { text: 'People are ultimately divided more by class than by nationality.', weights: { economy: -0.6 }, order: 8 },
+      { text: 'Controlling inflation is more important than controlling unemployment.', weights: { economy: 0.7 }, order: 9 },
+      { text: 'Because corporations cannot be trusted to voluntarily protect the environment, they require regulation.', weights: { economy: -0.8, environment: 0.3 }, order: 10 },
+      { text: '"From each according to his ability, to each according to his need" is a fundamentally good idea.', weights: { economy: -0.9 }, order: 11 },
+      { text: 'The freer the market, the freer the people.', weights: { economy: 0.9, civil_liberties: 0.3 }, order: 12 },
+      { text: "It's a sad reflection on our society that something as basic as drinking water is now a bottled, branded consumer product.", weights: { economy: -0.6 }, order: 13 },
+      { text: "Land shouldn't be a commodity to be bought and sold.", weights: { economy: -0.8 }, order: 14 },
+      { text: 'It is regrettable that many personal fortunes are made by people who simply manipulate money and contribute nothing to their society.', weights: { economy: -0.7 }, order: 15 },
+      { text: 'Protectionism is sometimes necessary in trade.', weights: { economy: -0.5, diplomacy: -0.3 }, order: 16 },
+      { text: 'The only social responsibility of a company should be to deliver a profit to its shareholders.', weights: { economy: 0.9 }, order: 17 },
+      { text: 'The rich are too highly taxed.', weights: { economy: 0.8 }, order: 18 },
+      { text: 'Those with the ability to pay should have access to higher standards of medical care.', weights: { economy: 0.6 }, order: 19 },
+      { text: 'Governments should penalise businesses that mislead the public.', weights: { economy: -0.5, justice: 0.3 }, order: 20 },
+      { text: 'A genuine free market requires restrictions on the ability of predator multinationals to create monopolies.', weights: { economy: -0.4 }, order: 21 },
+      // Page 3 — Social / personal / authority
+      { text: "Abortion, when the woman's life is not threatened, should always be illegal.", weights: { civil_liberties: -0.9, society: -0.5 }, order: 22 },
+      { text: 'All authority should be questioned.', weights: { civil_liberties: 0.8, governance: 0.5 }, order: 23 },
+      { text: 'An eye for an eye and a tooth for a tooth.', weights: { justice: -0.7, civil_liberties: -0.3 }, order: 24 },
+      { text: 'Taxpayers should not be expected to prop up any theatres or museums that cannot survive on a commercial basis.', weights: { economy: 0.6 }, order: 25 },
+      { text: 'Schools should not make classroom attendance compulsory.', weights: { civil_liberties: 0.6 }, order: 26 },
+      { text: 'All people have their rights, but it is better for all of us that different sorts of people should keep to their own kind.', weights: { society: -0.9, civil_liberties: -0.5 }, order: 27 },
+      { text: 'Good parents sometimes have to spank their children.', weights: { civil_liberties: -0.5, society: -0.3 }, order: 28 },
+      { text: "It's natural for children to keep some secrets from their parents.", weights: { civil_liberties: 0.4 }, order: 29 },
+      { text: 'Possessing marijuana for personal use should not be a criminal offence.', weights: { civil_liberties: 0.8, justice: 0.3 }, order: 30 },
+      { text: 'The prime function of schooling should be to equip the future generation to find jobs.', weights: { economy: 0.4, society: -0.3 }, order: 31 },
+      { text: 'People with serious inheritable disabilities should not be allowed to reproduce.', weights: { civil_liberties: -0.9, society: -0.5 }, order: 32 },
+      { text: 'The most important thing for children to learn is to accept discipline.', weights: { civil_liberties: -0.6, society: -0.4 }, order: 33 },
+      { text: 'There are no savage and civilised peoples; there are only different cultures.', weights: { society: 0.7, diplomacy: 0.3 }, order: 34 },
+      { text: 'Those who are able to work, and refuse the opportunity, should not expect society\'s support.', weights: { economy: 0.7 }, order: 35 },
+      { text: "When you are troubled, it's better not to think about it, but to keep busy with more cheerful things.", weights: { society: -0.2 }, order: 36 },
+      { text: 'First-generation immigrants can never be fully integrated within their new country.', weights: { society: -0.7, diplomacy: -0.3 }, order: 37 },
+      { text: "What's good for the most successful corporations is always, ultimately, good for all of us.", weights: { economy: 0.8 }, order: 38 },
+      { text: 'No broadcasting institution, however independent its content, should receive public funding.', weights: { economy: 0.6 }, order: 39 },
+      // Page 4 — State, liberty, crime, religion
+      { text: 'Our civil liberties are being excessively curbed in the name of counter-terrorism.', weights: { civil_liberties: 0.8 }, order: 40 },
+      { text: 'A significant advantage of a one-party state is that it avoids all the arguments that delay progress in a democratic political system.', weights: { governance: -0.9, civil_liberties: -0.5 }, order: 41 },
+      { text: 'Although the electronic age makes official surveillance easier, only wrongdoers need to be worried.', weights: { civil_liberties: -0.8 }, order: 42 },
+      { text: 'The death penalty should be an option for the most serious crimes.', weights: { justice: -0.8, civil_liberties: -0.3 }, order: 43 },
+      { text: 'In a civilised society, one must always have people above to be obeyed and people below to be commanded.', weights: { governance: -0.9, civil_liberties: -0.5 }, order: 44 },
+      { text: "Abstract art that doesn't represent anything shouldn't be considered art at all.", weights: { society: -0.4 }, order: 45 },
+      { text: 'In criminal justice, punishment should be more important than rehabilitation.', weights: { justice: -0.7, civil_liberties: -0.3 }, order: 46 },
+      { text: 'It is a waste of time to try to rehabilitate some criminals.', weights: { justice: -0.5 }, order: 47 },
+      { text: 'The businessperson and the manufacturer are more important than the writer and the artist.', weights: { economy: 0.5, society: -0.3 }, order: 48 },
+      { text: 'Mothers may have careers, but their first duty is to be homemakers.', weights: { society: -0.8, civil_liberties: -0.3 }, order: 49 },
+      { text: 'Almost all politicians promise economic growth, but we should heed the warnings of climate science that growth is detrimental to our efforts to curb global warming.', weights: { environment: 0.7, economy: -0.3 }, order: 50 },
+      { text: 'Making peace with the establishment is an important aspect of maturity.', weights: { civil_liberties: -0.4, governance: -0.3 }, order: 51 },
+      // Page 5 — Religion, sex, morality
+      { text: 'Astrology accurately explains many things.', weights: { society: -0.3 }, order: 52 },
+      { text: 'You cannot be moral without being religious.', weights: { society: -0.8 }, order: 53 },
+      { text: 'Charity is better than social security as a means of helping the genuinely disadvantaged.', weights: { economy: 0.7 }, order: 54 },
+      { text: 'Some people are naturally unlucky.', weights: { society: -0.2 }, order: 55 },
+      { text: "It is important that my child's school instills religious values.", weights: { society: -0.7, civil_liberties: -0.3 }, order: 56 },
+      { text: 'Sex outside marriage is usually immoral.', weights: { society: -0.8, civil_liberties: -0.3 }, order: 57 },
+      { text: 'A same sex couple in a stable, loving relationship should not be excluded from the possibility of child adoption.', weights: { society: 0.8, civil_liberties: 0.5 }, order: 58 },
+      { text: 'Pornography, depicting consenting adults, should be legal for the adult population.', weights: { civil_liberties: 0.7, society: 0.3 }, order: 59 },
+      { text: 'What goes on in a private bedroom between consenting adults is no business of the state.', weights: { civil_liberties: 0.9, society: 0.3 }, order: 60 },
+      { text: 'No one can feel naturally homosexual.', weights: { society: -0.8, civil_liberties: -0.3 }, order: 61 },
+      { text: 'These days openness about sex has gone too far.', weights: { society: -0.6, civil_liberties: -0.3 }, order: 62 },
+    ];
+
+    // ───────────────────────────────────────────────
+    // 9Axes original propositions — 36 total (4 per conceptual axis)
+    // Conceptual axes: Federal/Unitary, Democratic/Authoritarian, Globalist/Isolationist,
+    // Militarist/Pacifist, Security/Freedom, Equality/Markets, Secular/Religious,
+    // Progressive/Traditional, Assimilationist/Multiculturalist.
+    // Inspired by the 9Axes quiz (MIT License, Copyright © 2017 8values).
+    // All propositions below are original.
+    const nineAxesPropositions = [
+      // Federal vs Unitary → governance
+      { text: 'Local communities should have the primary authority over education, policing, and land use in their area.', weights: { governance: 0.8 }, order: 1 },
+      { text: 'A single national curriculum and set of standards ensures equal opportunity for all citizens.', weights: { governance: -0.7 }, order: 2 },
+      { text: 'Regions with distinct cultural identities deserve significant legislative autonomy.', weights: { governance: 0.7, society: 0.3 }, order: 3 },
+      { text: 'Strong central coordination prevents wasteful duplication and ensures efficient public services.', weights: { governance: -0.8 }, order: 4 },
+      // Democratic vs Authoritarian → governance, civil_liberties
+      { text: 'Citizens should be able to propose laws and trigger national referendums on important issues.', weights: { governance: 0.8, civil_liberties: 0.5 }, order: 5 },
+      { text: 'Quick decisive action by leaders is more valuable than the slow deliberation of democratic debate.', weights: { governance: -0.8, civil_liberties: -0.4 }, order: 6 },
+      { text: 'All positions of political power should be subject to regular competitive elections.', weights: { governance: 0.7 }, order: 7 },
+      { text: 'Most people lack the knowledge needed to make wise decisions on complex policy matters.', weights: { governance: -0.6, civil_liberties: -0.3 }, order: 8 },
+      // Globalist vs Isolationist → diplomacy
+      { text: 'International organizations should have the authority to enforce human rights standards worldwide.', weights: { diplomacy: 0.8, justice: 0.4 }, order: 9 },
+      { text: 'A nation\'s foreign policy should focus exclusively on advancing its own strategic interests.', weights: { diplomacy: -0.8 }, order: 10 },
+      { text: 'Free movement of people between countries generally creates more prosperity than it costs.', weights: { diplomacy: 0.7, economy: 0.3 }, order: 11 },
+      { text: 'Binding international agreements undermine a nation\'s right to self-governance.', weights: { diplomacy: -0.7, governance: -0.3 }, order: 12 },
+      // Militarist vs Pacifist → diplomacy, justice
+      { text: 'Military strength is the foundation upon which a nation\'s diplomatic influence rests.', weights: { diplomacy: -0.5, justice: -0.5 }, order: 13 },
+      { text: 'Diplomatic negotiation should always be exhausted before any military option is considered.', weights: { diplomacy: 0.7, justice: 0.5 }, order: 14 },
+      { text: 'Mandatory national service — military or civilian — builds civic duty and social cohesion.', weights: { civil_liberties: -0.6, governance: -0.3 }, order: 15 },
+      { text: 'Defence budgets could be far better spent on healthcare, education, and infrastructure.', weights: { diplomacy: 0.5, economy: -0.3, environment: 0.3 }, order: 16 },
+      // Security vs Freedom → civil_liberties
+      { text: 'Government surveillance programs are a justified trade-off for preventing terrorism and serious crime.', weights: { civil_liberties: -0.9 }, order: 17 },
+      { text: 'No amount of security justifies the government reading citizens\' private communications.', weights: { civil_liberties: 0.9 }, order: 18 },
+      { text: 'National identity databases and biometric tracking make society safer for everyone.', weights: { civil_liberties: -0.7, technology: 0.3 }, order: 19 },
+      { text: 'Citizens should be free to encrypt their data and communications without government backdoors.', weights: { civil_liberties: 0.8, technology: 0.4 }, order: 20 },
+      // Equality vs Markets → economy
+      { text: 'Essential services like healthcare, education, and housing should be guaranteed by the state to all citizens.', weights: { economy: -0.8 }, order: 21 },
+      { text: 'A competitive free market with minimal regulation produces the best outcomes for society.', weights: { economy: 0.9 }, order: 22 },
+      { text: 'Progressive taxation — where the wealthy pay a higher percentage — is fair and necessary.', weights: { economy: -0.6, justice: 0.3 }, order: 23 },
+      { text: 'Entrepreneurship and private enterprise are the primary engines of innovation and prosperity.', weights: { economy: 0.7, technology: 0.3 }, order: 24 },
+      // Secular vs Religious → society
+      { text: 'Religious institutions should have no influence on government policy or legislation.', weights: { society: 0.8 }, order: 25 },
+      { text: 'Moral values rooted in religious tradition provide an essential foundation for a just society.', weights: { society: -0.8 }, order: 26 },
+      { text: 'Public schools should teach about world religions comparatively rather than promoting any single faith.', weights: { society: 0.6, civil_liberties: 0.3 }, order: 27 },
+      { text: 'A nation\'s laws and holidays should reflect its dominant cultural and religious heritage.', weights: { society: -0.7 }, order: 28 },
+      // Progressive vs Traditional → technology, society
+      { text: 'Emerging technologies like AI and genetic engineering offer humanity its greatest opportunities.', weights: { technology: 0.9 }, order: 29 },
+      { text: 'Traditional family structures and community bonds are more valuable than technological convenience.', weights: { technology: -0.6, society: -0.7 }, order: 30 },
+      { text: 'Society should embrace social and cultural change as a sign of healthy evolution.', weights: { society: 0.8, technology: 0.3 }, order: 31 },
+      { text: 'Rapid social change destabilises communities and erodes the values that hold them together.', weights: { society: -0.8, technology: -0.3 }, order: 32 },
+      // Assimilationist vs Multiculturalist → society, diplomacy
+      { text: 'Immigrants should be expected to adopt the language, customs, and civic values of their new country.', weights: { society: -0.5, diplomacy: -0.4 }, order: 33 },
+      { text: 'A diverse society with many cultural traditions is stronger and more creative than a homogeneous one.', weights: { society: 0.7, diplomacy: 0.4 }, order: 34 },
+      { text: 'Maintaining a shared national identity is more important than celebrating cultural differences.', weights: { society: -0.6, diplomacy: -0.3 }, order: 35 },
+      { text: 'Multilingual government services and multicultural education enrich a society.', weights: { society: 0.5, diplomacy: 0.5, civil_liberties: 0.3 }, order: 36 },
+    ];
+
     // Create all questions with their questionnaire IDs
-    const [civicResult, quickResult, digitalResult] = await Promise.all([
+    const [civicResult, quickResult, digitalResult, compassResult, nineAxesResult] = await Promise.all([
       this.prisma.question.createMany({
         data: civicPropositions.map((p) => ({ ...p, questionnaireId: civicCompass.id })),
       }),
@@ -332,16 +508,24 @@ export class QuestionsService {
       this.prisma.question.createMany({
         data: digitalPropositions.map((p) => ({ ...p, questionnaireId: digitalAge.id })),
       }),
+      this.prisma.question.createMany({
+        data: politicalCompassPropositions.map((p) => ({ ...p, questionnaireId: politicalCompass.id })),
+      }),
+      this.prisma.question.createMany({
+        data: nineAxesPropositions.map((p) => ({ ...p, questionnaireId: nineAxes.id })),
+      }),
     ]);
 
     return {
-      message: 'Seeded 3 questionnaires with propositions',
+      message: 'Seeded 5 questionnaires with propositions',
       questionnaires: [
         { slug: 'civic-compass', questions: civicResult.count },
         { slug: 'quick-compass', questions: quickResult.count },
         { slug: 'digital-age', questions: digitalResult.count },
+        { slug: 'political-compass', questions: compassResult.count },
+        { slug: 'nine-axes', questions: nineAxesResult.count },
       ],
-      totalQuestions: civicResult.count + quickResult.count + digitalResult.count,
+      totalQuestions: civicResult.count + quickResult.count + digitalResult.count + compassResult.count + nineAxesResult.count,
     };
   }
 }

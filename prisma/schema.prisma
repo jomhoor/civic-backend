@@ -26,6 +26,8 @@ model User {
   wallet                Wallet?
   sentConnections       ConnectionRequest[] @relation("SentConnections")
   receivedConnections   ConnectionRequest[] @relation("ReceivedConnections")
+  sentPokes             Poke[]         @relation("SentPokes")
+  receivedPokes         Poke[]         @relation("ReceivedPokes")
 }
 
 model Demographics {
@@ -131,3 +133,18 @@ model ConnectionRequest {
   @@unique([senderId, receiverId])  // one request per pair
   @@index([receiverId, status])
 }
+
+model Poke {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  seen       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  sender     User     @relation("SentPokes", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedPokes", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])  // one poke per direction per pair
+  @@index([receiverId, seen])
+}
+
+
