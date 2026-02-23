@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String         @id @default(uuid())
+  walletAddress         String         @unique
+  isSmartWallet         Boolean        @default(false)
+  isResearchParticipant Boolean        @default(false)
+  inviteCode            String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  responses             UserResponse[]
+  compassEntries        CompassEntry[]
+  demographics          Demographics?
+  wallet                Wallet?
+}
+
+model Demographics {
+  id            String  @id @default(uuid())
+  userId        String  @unique
+  ageRange      String?
+  gender        String?
+  country       String?
+  selfPlacement Float?
+  user          User    @relation(fields: [userId], references: [id])
+}
+
+model Question {
+  id        String         @id @default(uuid())
+  text      String
+  weights   Json
+  active    Boolean        @default(true)
+  order     Int            @default(0)
+  createdAt DateTime       @default(now())
+  responses UserResponse[]
+}
+
+model UserResponse {
+  id             String   @id @default(uuid())
+  userId         String
+  questionId     String
+  answerValue    Float
+  responseTimeMs Int?
+  answeredAt     DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+  question       Question @relation(fields: [questionId], references: [id])
+
+  @@unique([userId, questionId])
+}
+
+model CompassEntry {
+  id           String   @id @default(uuid())
+  userId       String
+  dimensions   Json
+  confidence   Json
+  snapshotName String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Wallet {
+  id           String          @id @default(uuid())
+  userId       String          @unique
+  polygonAddress String        @unique
+  walletType   String          @default("metamask")
+  tokenBalance Float           @default(0)
+  createdAt    DateTime        @default(now())
+  user         User            @relation(fields: [userId], references: [id])
+  transactions TokenTransfer[]
+}
+
+model TokenTransfer {
+  id        String   @id @default(uuid())
+  walletId  String
+  amount    Float
+  reason    String
+  txHash    String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  wallet    Wallet   @relation(fields: [walletId], references: [id])
+}
