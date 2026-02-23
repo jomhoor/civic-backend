@@ -21,6 +21,9 @@ export interface MatchResult {
   dimensions: Record<string, number>;
   score: number;       // 0..1 — higher = better match for this mode
   mode: MatchMode;
+  connectionStatus?: string | null; // PENDING | ACCEPTED | DECLINED | null
+  connectionId?: string | null;
+  connectionDirection?: 'sent' | 'received' | null;
 }
 
 @Injectable()
@@ -63,7 +66,30 @@ export class MatchmakingService {
 
     if (discoverableUsers.length === 0) return [];
 
-    // 4. Get their latest compass entries
+    // 4. Get existing connection requests for this user
+    const existingConnections = await this.prisma.connectionRequest.findMany({
+      where: {
+        OR: [
+          { senderId: userId },
+          { receiverId: userId },
+        ],
+      },
+      select: {
+        id: true,
+        senderId: true,
+        receiverId: true,
+        status: true,
+      },
+    });
+
+    const connectionMap = new Map<string, { id: string; status: string; direction: 'sent' | 'received' }>();
+    for (const conn of existingConnections) {
+      const otherId = conn.senderId === userId ? conn.receiverId : conn.senderId;
+      const direction = conn.senderId === userId ? 'sent' : 'received';
+      connectionMap.set(otherId, { id: conn.id, status: conn.status, direction });
+    }
+
+    // 5. Get their latest compass entries
     const candidates: MatchResult[] = [];
 
     for (const candidate of discoverableUsers) {
@@ -73,18 +99,24 @@ export class MatchmakingService {
       const score = this.calculateScore(userCompass, compass, mode);
 
       if (score >= minThreshold) {
+        const conn = connectionMap.get(candidate.id);
         candidates.push({
           userId: candidate.id,
-          walletAddress: this.maskAddress(candidate.walletAddress),
+          walletAddress: conn?.status === 'ACCEPTED'
+            ? candidate.walletAddress
+            : this.maskAddress(candidate.walletAddress),
           displayName: candidate.displayName,
           dimensions: compass,
           score: parseFloat(score.toFixed(3)),
           mode,
+          connectionStatus: conn?.status ?? null,
+          connectionId: conn?.id ?? null,
+          connectionDirection: conn?.direction ?? null,
         });
       }
     }
 
-    // 5. Sort by score descending, take top N
+    // 6. Sort by score descending, take top N
     candidates.sort((a, b) => b.score - a.score);
     return candidates.slice(0, limit);
   }
@@ -282,6 +314,222 @@ export class MatchmakingService {
         displayName: true,
         matchThreshold: true,
       },
+    });
+  }
+
+  // ──────────────────────────────────────────────────
+  // Connection Requests
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Send a connection request to another user.
+   */
+  async sendConnectionRequest(
+    senderId: string,
+    receiverId: string,
+    matchMode: string,
+    matchScore: number,
+    message?: string,
+  ) {
+    // Prevent connecting to yourself
+    if (senderId === receiverId) {
+      throw new Error('Cannot connect to yourself');
+    }
+
+    // Check if a request already exists (in either direction)
+    const existing = await this.prisma.connectionRequest.findFirst({
+      where: {
+        OR: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId },
+        ],
+      },
+    });
+
+    if (existing) {
+      if (existing.status === 'ACCEPTED') {
+        throw new Error('Already connected');
+      }
+      if (existing.status === 'PENDING') {
+        // If the other person already sent us a request, auto-accept it
+        if (existing.senderId === receiverId) {
+          return this.respondToConnection(existing.id, senderId, 'ACCEPTED');
+        }
+        throw new Error('Connection request already pending');
+      }
+      if (existing.status === 'DECLINED' || existing.status === 'CANCELLED') {
+        // Allow re-requesting after a decline/cancel by updating the existing record
+        return this.prisma.connectionRequest.update({
+          where: { id: existing.id },
+          data: {
+            senderId,
+            receiverId,
+            matchMode,
+            matchScore,
+            message,
+            status: 'PENDING',
+            respondedAt: null,
+          },
+          include: {
+            receiver: { select: { id: true, displayName: true, walletAddress: true } },
+          },
+        });
+      }
+    }
+
+    return this.prisma.connectionRequest.create({
+      data: {
+        senderId,
+        receiverId,
+        matchMode,
+        matchScore,
+        message,
+        status: 'PENDING',
+      },
+      include: {
+        receiver: { select: { id: true, displayName: true, walletAddress: true } },
+      },
+    });
+  }
+
+  /**
+   * Respond to a connection request (accept or decline).
+   * Only the receiver can respond.
+   */
+  async respondToConnection(
+    connectionId: string,
+    userId: string,
+    action: 'ACCEPTED' | 'DECLINED',
+  ) {
+    const connection = await this.prisma.connectionRequest.findUnique({
+      where: { id: connectionId },
+      include: {
+        sender: { select: { id: true, displayName: true, walletAddress: true } },
+        receiver: { select: { id: true, displayName: true, walletAddress: true } },
+      },
+    });
+
+    if (!connection) {
+      throw new Error('Connection request not found');
+    }
+
+    if (connection.receiverId !== userId) {
+      throw new Error('Only the receiver can respond to a connection request');
+    }
+
+    if (connection.status !== 'PENDING') {
+      throw new Error(`Cannot respond to a ${connection.status} request`);
+    }
+
+    const updated = await this.prisma.connectionRequest.update({
+      where: { id: connectionId },
+      data: {
+        status: action,
+        respondedAt: new Date(),
+      },
+      include: {
+        sender: { select: { id: true, displayName: true, walletAddress: true } },
+        receiver: { select: { id: true, displayName: true, walletAddress: true } },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Cancel a sent connection request.
+   * Only the sender can cancel.
+   */
+  async cancelConnection(connectionId: string, userId: string) {
+    const connection = await this.prisma.connectionRequest.findUnique({
+      where: { id: connectionId },
+    });
+
+    if (!connection) {
+      throw new Error('Connection request not found');
+    }
+
+    if (connection.senderId !== userId) {
+      throw new Error('Only the sender can cancel a connection request');
+    }
+
+    if (connection.status !== 'PENDING') {
+      throw new Error(`Cannot cancel a ${connection.status} request`);
+    }
+
+    return this.prisma.connectionRequest.update({
+      where: { id: connectionId },
+      data: { status: 'CANCELLED', respondedAt: new Date() },
+    });
+  }
+
+  /**
+   * Get all incoming connection requests for a user.
+   */
+  async getIncomingRequests(userId: string) {
+    return this.prisma.connectionRequest.findMany({
+      where: {
+        receiverId: userId,
+        status: 'PENDING',
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            displayName: true,
+            walletAddress: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Get all active connections (accepted) for a user.
+   * Returns full wallet addresses since both parties agreed.
+   */
+  async getConnections(userId: string) {
+    const connections = await this.prisma.connectionRequest.findMany({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { senderId: userId },
+          { receiverId: userId },
+        ],
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            displayName: true,
+            walletAddress: true,
+          },
+        },
+        receiver: {
+          select: {
+            id: true,
+            displayName: true,
+            walletAddress: true,
+          },
+        },
+      },
+      orderBy: { respondedAt: 'desc' },
+    });
+
+    // Format: return the "other" user's info with full wallet for Blockscan chat
+    return connections.map((c) => {
+      const other = c.senderId === userId ? c.receiver : c.sender;
+      return {
+        connectionId: c.id,
+        userId: other.id,
+        displayName: other.displayName,
+        walletAddress: other.walletAddress, // full address — both agreed
+        matchMode: c.matchMode,
+        matchScore: c.matchScore,
+        connectedAt: c.respondedAt,
+        blockscanChatUrl: `https://chat.blockscan.com/eth/${other.walletAddress}`,
+      };
     });
   }
 }

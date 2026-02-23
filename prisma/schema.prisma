@@ -24,6 +24,8 @@ model User {
   compassEntries        CompassEntry[]
   demographics          Demographics?
   wallet                Wallet?
+  sentConnections       ConnectionRequest[] @relation("SentConnections")
+  receivedConnections   ConnectionRequest[] @relation("ReceivedConnections")
 }
 
 model Demographics {
@@ -90,4 +92,22 @@ model TokenTransfer {
   status    String   @default("pending")
   createdAt DateTime @default(now())
   wallet    Wallet   @relation(fields: [walletId], references: [id])
+}
+
+model ConnectionRequest {
+  id          String   @id @default(uuid())
+  senderId    String
+  receiverId  String
+  matchMode   String            // mirror | challenger | complement
+  matchScore  Float             // score at time of request
+  status      String   @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELLED
+  message     String?           // optional intro message
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  respondedAt DateTime?         // when the receiver acted
+  sender      User     @relation("SentConnections", fields: [senderId], references: [id])
+  receiver    User     @relation("ReceivedConnections", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])  // one request per pair
+  @@index([receiverId, status])
 }

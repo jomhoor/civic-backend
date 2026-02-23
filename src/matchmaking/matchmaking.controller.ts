@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, Req, Param, HttpException, HttpStatus } from '@nestjs/common';
 import { MatchmakingService, MatchMode, MatchResult } from './matchmaking.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -70,5 +70,89 @@ export class MatchmakingController {
     }
 
     return results;
+  }
+
+  // ──────────────────────────────────────────────────
+  // Connection Requests
+  // ──────────────────────────────────────────────────
+
+  /**
+   * POST /matches/connect — Send a connection request.
+   */
+  @Post('connect')
+  async sendConnectionRequest(
+    @Req() req: any,
+    @Body() body: {
+      receiverId: string;
+      matchMode: string;
+      matchScore: number;
+      message?: string;
+    },
+  ) {
+    try {
+      return await this.matchmakingService.sendConnectionRequest(
+        req.user.userId,
+        body.receiverId,
+        body.matchMode,
+        body.matchScore,
+        body.message,
+      );
+    } catch (err: any) {
+      throw new HttpException(err.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /**
+   * POST /matches/connect/:id/respond — Accept or decline a connection request.
+   */
+  @Post('connect/:id/respond')
+  async respondToConnection(
+    @Req() req: any,
+    @Param('id') connectionId: string,
+    @Body() body: { action: 'ACCEPTED' | 'DECLINED' },
+  ) {
+    try {
+      return await this.matchmakingService.respondToConnection(
+        connectionId,
+        req.user.userId,
+        body.action,
+      );
+    } catch (err: any) {
+      throw new HttpException(err.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /**
+   * POST /matches/connect/:id/cancel — Cancel a sent connection request.
+   */
+  @Post('connect/:id/cancel')
+  async cancelConnection(
+    @Req() req: any,
+    @Param('id') connectionId: string,
+  ) {
+    try {
+      return await this.matchmakingService.cancelConnection(
+        connectionId,
+        req.user.userId,
+      );
+    } catch (err: any) {
+      throw new HttpException(err.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  /**
+   * GET /matches/incoming — Get pending incoming connection requests.
+   */
+  @Get('incoming')
+  async getIncomingRequests(@Req() req: any) {
+    return this.matchmakingService.getIncomingRequests(req.user.userId);
+  }
+
+  /**
+   * GET /matches/connections — Get all accepted connections (with full wallet addresses).
+   */
+  @Get('connections')
+  async getConnections(@Req() req: any) {
+    return this.matchmakingService.getConnections(req.user.userId);
   }
 }
