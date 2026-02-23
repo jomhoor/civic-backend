@@ -11,6 +11,7 @@ import { CompassModule } from './compass/compass.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { MatchmakingModule } from './matchmaking/matchmaking.module';
     WalletModule,
     SchedulerModule,
     MatchmakingModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
