@@ -8,24 +8,32 @@ export class CompassController {
   constructor(private readonly compassService: CompassService) {}
 
   @Get()
-  async getCurrentCompass(@Req() req: any, @Query('userId') fallbackId?: string) {
+  async getCurrentCompass(
+    @Req() req: any,
+    @Query('userId') fallbackId?: string,
+    @Query('questionnaireId') questionnaireId?: string,
+  ) {
     const userId = req.user?.userId ?? fallbackId;
-    return this.compassService.getCurrentCompass(userId);
+    return this.compassService.getCurrentCompass(userId, questionnaireId);
   }
 
   @Post('snapshot')
   async saveSnapshot(
     @Req() req: any,
-    @Body() body: { userId?: string; snapshotName?: string },
+    @Body() body: { userId?: string; snapshotName?: string; questionnaireId?: string },
   ) {
     const userId = req.user?.userId ?? body.userId;
-    return this.compassService.saveSnapshot(userId, body.snapshotName);
+    return this.compassService.saveSnapshot(userId, body.snapshotName, body.questionnaireId);
   }
 
   @Get('history')
-  async getHistory(@Req() req: any, @Query('userId') fallbackId?: string) {
+  async getHistory(
+    @Req() req: any,
+    @Query('userId') fallbackId?: string,
+    @Query('questionnaireId') questionnaireId?: string,
+  ) {
     const userId = req.user?.userId ?? fallbackId;
-    return this.compassService.getHistory(userId);
+    return this.compassService.getHistory(userId, questionnaireId);
   }
 
   @Get('snapshot/:id')

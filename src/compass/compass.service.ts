@@ -30,12 +30,17 @@ export class CompassService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Calculate the current compass vector from all user responses.
-   * For each axis: weighted average of (answerValue * questionWeight).
+   * Calculate the current compass vector from user responses.
+   * If questionnaireId is given, only use responses to questions in that questionnaire.
    */
-  async calculateCompass(userId: string) {
+  async calculateCompass(userId: string, questionnaireId?: string) {
+    const where: any = { userId };
+    if (questionnaireId) {
+      where.question = { questionnaireId };
+    }
+
     const responses = await this.prisma.userResponse.findMany({
-      where: { userId },
+      where,
       include: { question: true },
     });
 
@@ -73,8 +78,8 @@ export class CompassService {
   /**
    * Get the current compass or calculate it.
    */
-  async getCurrentCompass(userId: string) {
-    return this.calculateCompass(userId);
+  async getCurrentCompass(userId: string, questionnaireId?: string) {
+    return this.calculateCompass(userId, questionnaireId);
   }
 
   /**
@@ -105,12 +110,16 @@ export class CompassService {
    * Save a snapshot of the current compass state.
    * Auto-generates a changelog from the previous snapshot.
    */
-  async saveSnapshot(userId: string, snapshotName?: string) {
-    const { dimensions, confidence } = await this.calculateCompass(userId);
+  async saveSnapshot(userId: string, snapshotName?: string, questionnaireId?: string) {
+    const { dimensions, confidence } = await this.calculateCompass(userId, questionnaireId);
 
-    // Get the most recent previous snapshot for changelog
+    // Get the most recent previous snapshot for changelog (scoped by questionnaire)
+    const prevWhere: any = { userId };
+    if (questionnaireId) prevWhere.questionnaireId = questionnaireId;
+    else prevWhere.questionnaireId = null;
+
     const previous = await this.prisma.compassEntry.findFirst({
-      where: { userId },
+      where: prevWhere,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -121,6 +130,7 @@ export class CompassService {
     return this.prisma.compassEntry.create({
       data: {
         userId,
+        questionnaireId: questionnaireId ?? null,
         dimensions,
         confidence,
         snapshotName: snapshotName ?? `Snapshot ${new Date().toISOString().split('T')[0]}`,
@@ -131,11 +141,18 @@ export class CompassService {
 
   /**
    * Get all snapshots for a user, ordered by creation date descending.
+   * Optionally filter by questionnaireId.
    */
-  async getHistory(userId: string) {
+  async getHistory(userId: string, questionnaireId?: string) {
+    const where: any = { userId };
+    if (questionnaireId) where.questionnaireId = questionnaireId;
+
     return this.prisma.compassEntry.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
+      include: {
+        questionnaire: { select: { slug: true, title: true, titleFa: true, icon: true } },
+      },
     });
   }
 

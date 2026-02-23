@@ -12,6 +12,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { QuestionnairesModule } from './questionnaires/questionnaires.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
+    QuestionnairesModule,
     QuestionsModule,
     ResponsesModule,
     CompassModule,

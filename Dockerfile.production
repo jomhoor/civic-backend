@@ -1,0 +1,35 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Generate Prisma client
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+RUN npx prisma generate
+
+# Build NestJS
+RUN npm run build
+
+# --- Production image ---
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy Prisma schema + migrations
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# Copy built dist
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 3001
+
+# Run migrations, then start production server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

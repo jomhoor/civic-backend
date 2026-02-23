@@ -8,8 +8,8 @@ export class QuestionsController {
 
   /** Public — no auth needed for calibration questions */
   @Get('calibration')
-  async getCalibrationQuestions() {
-    return this.questionsService.getCalibrationQuestions();
+  async getCalibrationQuestions(@Query('questionnaireId') questionnaireId?: string) {
+    return this.questionsService.getCalibrationQuestions(questionnaireId);
   }
 
   /** Protected — returns user-specific next questions */
@@ -19,15 +19,16 @@ export class QuestionsController {
     @Req() req: any,
     @Query('userId') fallbackId?: string,
     @Query('count') count?: number,
+    @Query('questionnaireId') questionnaireId?: string,
   ) {
     const userId = req.user?.userId ?? fallbackId;
-    return this.questionsService.getNextQuestions(userId, count ?? 3);
+    return this.questionsService.getNextQuestions(userId, count ?? 3, questionnaireId);
   }
 
   /** Public — list all questions */
   @Get('all')
-  async getAllQuestions() {
-    return this.questionsService.getAllQuestions();
+  async getAllQuestions(@Query('questionnaireId') questionnaireId?: string) {
+    return this.questionsService.getAllQuestions(questionnaireId);
   }
 
   @Post()

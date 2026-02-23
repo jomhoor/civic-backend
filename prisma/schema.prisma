@@ -38,14 +38,32 @@ model Demographics {
   user          User    @relation(fields: [userId], references: [id])
 }
 
+model Questionnaire {
+  id          String     @id @default(uuid())
+  slug        String     @unique
+  title       String
+  titleFa     String     @default("")
+  description String     @default("")
+  descriptionFa String   @default("")
+  icon        String     @default("🧭")
+  questionCount Int      @default(0)
+  active      Boolean    @default(true)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  questions   Question[]
+  compassEntries CompassEntry[]
+}
+
 model Question {
-  id        String         @id @default(uuid())
-  text      String
-  weights   Json
-  active    Boolean        @default(true)
-  order     Int            @default(0)
-  createdAt DateTime       @default(now())
-  responses UserResponse[]
+  id              String         @id @default(uuid())
+  text            String
+  weights         Json
+  active          Boolean        @default(true)
+  order           Int            @default(0)
+  questionnaireId String?
+  createdAt       DateTime       @default(now())
+  questionnaire   Questionnaire? @relation(fields: [questionnaireId], references: [id])
+  responses       UserResponse[]
 }
 
 model UserResponse {
@@ -62,14 +80,16 @@ model UserResponse {
 }
 
 model CompassEntry {
-  id           String   @id @default(uuid())
-  userId       String
-  dimensions   Json
-  confidence   Json
-  snapshotName String?
-  changeLog    String?
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
+  id              String         @id @default(uuid())
+  userId          String
+  questionnaireId String?
+  dimensions      Json
+  confidence      Json
+  snapshotName    String?
+  changeLog       String?
+  createdAt       DateTime       @default(now())
+  user            User           @relation(fields: [userId], references: [id])
+  questionnaire   Questionnaire? @relation(fields: [questionnaireId], references: [id])
 }
 
 model Wallet {

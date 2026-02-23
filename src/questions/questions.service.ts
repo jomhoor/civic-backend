@@ -7,11 +7,14 @@ export class QuestionsService {
 
   /**
    * Get 8 calibration questions — one per axis.
-   * Picks the first question (lowest order) from each axis group.
+   * If questionnaireId is provided, only pick from that questionnaire.
    */
-  async getCalibrationQuestions() {
+  async getCalibrationQuestions(questionnaireId?: string) {
+    const where: any = { active: true };
+    if (questionnaireId) where.questionnaireId = questionnaireId;
+
     const allActive = await this.prisma.question.findMany({
-      where: { active: true },
+      where,
       orderBy: { order: 'asc' },
     });
 
@@ -44,8 +47,9 @@ export class QuestionsService {
 
   /**
    * Get next unanswered questions for a paced session.
+   * Scoped to a specific questionnaire if questionnaireId is given.
    */
-  async getNextQuestions(userId: string, count = 3) {
+  async getNextQuestions(userId: string, count = 3, questionnaireId?: string) {
     const answeredIds = await this.prisma.userResponse.findMany({
       where: { userId },
       select: { questionId: true },
@@ -53,8 +57,11 @@ export class QuestionsService {
 
     const answeredSet = new Set(answeredIds.map((r: { questionId: string }) => r.questionId));
 
+    const where: any = { active: true };
+    if (questionnaireId) where.questionnaireId = questionnaireId;
+
     const allQuestions = await this.prisma.question.findMany({
-      where: { active: true },
+      where,
       orderBy: { order: 'asc' },
     });
 
@@ -65,11 +72,13 @@ export class QuestionsService {
 
   /**
    * Get all questions (for research mode — randomized).
+   * Scoped to a specific questionnaire if questionnaireId is given.
    */
-  async getAllQuestions() {
-    const questions = await this.prisma.question.findMany({
-      where: { active: true },
-    });
+  async getAllQuestions(questionnaireId?: string) {
+    const where: any = { active: true };
+    if (questionnaireId) where.questionnaireId = questionnaireId;
+
+    const questions = await this.prisma.question.findMany({ where });
     // Fisher-Yates shuffle
     for (let i = questions.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -85,24 +94,28 @@ export class QuestionsService {
     text: string;
     weights: Record<string, number>;
     order?: number;
+    questionnaireId?: string;
   }) {
     return this.prisma.question.create({
       data: {
         text: data.text,
         weights: data.weights,
         order: data.order ?? 0,
+        questionnaireId: data.questionnaireId,
       },
     });
   }
 
   /**
-   * Seed initial calibration questions (one per axis).
+   * Seed all questionnaires and their questions.
+   * Creates 3 questionnaires: Civic Compass (80), Quick Compass (16), Digital Age Dilemmas (24).
    */
   async seedCalibrationQuestions(force = false) {
     if (force) {
-      // Delete responses first (FK constraint), then questions
       await this.prisma.userResponse.deleteMany({});
+      await this.prisma.compassEntry.deleteMany({});
       await this.prisma.question.deleteMany({});
+      await this.prisma.questionnaire.deleteMany({});
     }
 
     const existingCount = await this.prisma.question.count();
@@ -110,23 +123,51 @@ export class QuestionsService {
       return { message: 'Questions already exist', count: existingCount };
     }
 
+    // ─── Create Questionnaires ───
+    const civicCompass = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'civic-compass',
+        title: 'Civic Compass',
+        titleFa: 'قطب‌نمای مدنی',
+        description: 'The comprehensive 80-question political compass covering all 8 axes of civic identity.',
+        descriptionFa: 'قطب‌نمای جامع ۸۰ سؤاله که تمام ۸ بُعد هویت مدنی را پوشش می‌دهد.',
+        icon: '🧭',
+        questionCount: 80,
+        order: 1,
+      },
+    });
+
+    const quickCompass = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'quick-compass',
+        title: 'Quick Compass',
+        titleFa: 'قطب‌نمای سریع',
+        description: 'A fast 16-question assessment — 2 per axis. Get your civic snapshot in minutes.',
+        descriptionFa: 'ارزیابی سریع ۱۶ سؤاله — ۲ سؤال در هر محور. در چند دقیقه تصویر مدنی خود را بگیرید.',
+        icon: '⚡',
+        questionCount: 16,
+        order: 2,
+      },
+    });
+
+    const digitalAge = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'digital-age',
+        title: 'Digital Age Dilemmas',
+        titleFa: 'معضلات عصر دیجیتال',
+        description: 'Deep dive into technology, AI, digital rights, crypto, and online governance — 24 questions.',
+        descriptionFa: 'بررسی عمیق فناوری، هوش مصنوعی، حقوق دیجیتال، رمزارز و حکمرانی آنلاین — ۲۴ سؤال.',
+        icon: '💻',
+        questionCount: 24,
+        order: 3,
+      },
+    });
+
     // ───────────────────────────────────────────────
     // Full proposition bank — 10 per axis, 80 total
-    // Axis poles (see axes_definition.md):
-    //   Economy:         -1 Regulated/Planned  →  +1 Free Market
-    //   Governance:      -1 Authoritarian      →  +1 Libertarian/Decentralized
-    //   Civil Liberties: -1 Security/Order      →  +1 Liberty/Rights
-    //   Society:         -1 Traditional         →  +1 Progressive
-    //   Diplomacy:       -1 Nationalist         →  +1 Internationalist
-    //   Environment:     -1 Productivist        →  +1 Ecologist
-    //   Justice:         -1 Punitive            →  +1 Rehabilitative
-    //   Technology:      -1 Regulation          →  +1 Acceleration
-    //
-    // answerValue agreement (+1) pushes toward the primary-weight pole.
-    // Cross-loadings kept to at most 1 secondary axis at |0.3|.
     // ───────────────────────────────────────────────
 
-    const propositions = [
+    const civicPropositions = [
       // ── Economy (orders 1-10) ──
       { text: 'The government should provide universal healthcare, even if it means higher taxes.', weights: { economy: -0.8, governance: -0.3 }, order: 1 },
       { text: 'A flat tax rate for everyone is fairer than a progressive tax system.', weights: { economy: 0.8 }, order: 2 },
@@ -224,10 +265,83 @@ export class QuestionsService {
       { text: 'Space colonization should be a priority, even at great cost.', weights: { technology: 0.8 }, order: 80 },
     ];
 
-    const created = await this.prisma.question.createMany({
-      data: propositions,
-    });
+    // ── Quick Compass — 16 questions, 2 per axis ──
+    const quickPropositions = [
+      { text: 'The government should guarantee a job for everyone who wants one.', weights: { economy: -0.8 }, order: 1 },
+      { text: 'The free market is the most efficient way to allocate resources.', weights: { economy: 0.8 }, order: 2 },
+      { text: 'Citizens should directly vote on major policy issues.', weights: { governance: 0.8 }, order: 3 },
+      { text: 'Strong leadership is more important than checks and balances.', weights: { governance: -0.8 }, order: 4 },
+      { text: 'Privacy is more important than national security.', weights: { civil_liberties: 0.8 }, order: 5 },
+      { text: 'Surveillance cameras in public spaces make society safer.', weights: { civil_liberties: -0.8 }, order: 6 },
+      { text: 'Society should embrace change and new social norms.', weights: { society: 0.8 }, order: 7 },
+      { text: 'Proven traditions and customs should guide public life.', weights: { society: -0.8 }, order: 8 },
+      { text: 'International cooperation benefits everyone more than going it alone.', weights: { diplomacy: 0.8 }, order: 9 },
+      { text: 'A nation must always put its own people first.', weights: { diplomacy: -0.8 }, order: 10 },
+      { text: 'Protecting the environment should take priority over economic growth.', weights: { environment: 0.8 }, order: 11 },
+      { text: 'Environmental regulations hold back economic progress.', weights: { environment: -0.8 }, order: 12 },
+      { text: 'The justice system should focus on rehabilitation, not punishment.', weights: { justice: 0.8 }, order: 13 },
+      { text: 'Tough sentences are necessary to deter crime.', weights: { justice: -0.8 }, order: 14 },
+      { text: 'New technologies should be adopted quickly, even with unknown risks.', weights: { technology: 0.8 }, order: 15 },
+      { text: 'Technology must be carefully regulated before widespread adoption.', weights: { technology: -0.8 }, order: 16 },
+    ];
 
-    return { message: 'Seeded proposition bank', count: created.count };
+    // ── Digital Age Dilemmas — 24 questions, 3 per axis ──
+    const digitalPropositions = [
+      // Economy + Tech
+      { text: 'Gig economy platforms should be required to provide benefits like traditional employers.', weights: { economy: -0.7, technology: -0.3 }, order: 1 },
+      { text: 'Cryptocurrency should replace central bank currencies.', weights: { economy: 0.8, technology: 0.3 }, order: 2 },
+      { text: 'Automation that eliminates jobs should be taxed to fund retraining programs.', weights: { economy: -0.7, technology: -0.3 }, order: 3 },
+      // Governance + Tech
+      { text: 'AI should be used to draft and evaluate legislation.', weights: { governance: -0.6, technology: 0.3 }, order: 4 },
+      { text: 'Online platforms should be governed by their users, not corporate boards.', weights: { governance: 0.8, technology: 0.3 }, order: 5 },
+      { text: 'Governments should maintain a digital identity system for all citizens.', weights: { governance: -0.7, civil_liberties: -0.3 }, order: 6 },
+      // Civil Liberties + Tech
+      { text: 'People should own and control all data collected about them.', weights: { civil_liberties: 0.8, technology: -0.3 }, order: 7 },
+      { text: 'AI-powered facial recognition in public spaces is an acceptable trade-off for safety.', weights: { civil_liberties: -0.9, technology: 0.3 }, order: 8 },
+      { text: 'Anonymous speech online should be a protected right.', weights: { civil_liberties: 0.8, technology: 0.3 }, order: 9 },
+      // Society + Tech
+      { text: 'Social media algorithms are polarizing society and should be regulated.', weights: { society: -0.3, technology: -0.7 }, order: 10 },
+      { text: 'AI-generated art and writing should have the same copyright protections as human-created works.', weights: { society: 0.5, technology: 0.5 }, order: 11 },
+      { text: 'Children under 16 should be banned from social media.', weights: { society: -0.6, civil_liberties: -0.3 }, order: 12 },
+      // Diplomacy + Tech
+      { text: 'Countries should cooperate on global AI safety standards.', weights: { diplomacy: 0.8, technology: -0.3 }, order: 13 },
+      { text: 'Cyber warfare capabilities are as important as traditional military defense.', weights: { diplomacy: -0.5, technology: 0.5 }, order: 14 },
+      { text: 'Tech companies should be prohibited from operating in authoritarian regimes.', weights: { diplomacy: 0.6, technology: -0.3 }, order: 15 },
+      // Environment + Tech
+      { text: 'Cloud computing and data centers should meet strict carbon neutrality requirements.', weights: { environment: 0.7, technology: -0.3 }, order: 16 },
+      { text: 'Proof-of-work blockchains should be banned due to their energy consumption.', weights: { environment: 0.8, technology: -0.3 }, order: 17 },
+      { text: 'Technology will solve climate change without requiring lifestyle sacrifices.', weights: { environment: -0.5, technology: 0.5 }, order: 18 },
+      // Justice + Tech
+      { text: 'AI should be used in criminal sentencing to reduce human bias.', weights: { justice: 0.5, technology: 0.5 }, order: 19 },
+      { text: 'Algorithmic discrimination should carry the same legal penalties as human discrimination.', weights: { justice: 0.7, technology: -0.3 }, order: 20 },
+      { text: 'Predictive policing using AI prevents crime more effectively than traditional methods.', weights: { justice: -0.6, technology: 0.3 }, order: 21 },
+      // Technology (pure)
+      { text: 'Artificial general intelligence (AGI) development should be paused until safety is guaranteed.', weights: { technology: -0.9 }, order: 22 },
+      { text: 'Open-source AI models are safer than proprietary ones because they can be publicly audited.', weights: { technology: 0.7 }, order: 23 },
+      { text: 'Brain-computer interfaces should be available to the public as soon as they are viable.', weights: { technology: 0.8 }, order: 24 },
+    ];
+
+    // Create all questions with their questionnaire IDs
+    const [civicResult, quickResult, digitalResult] = await Promise.all([
+      this.prisma.question.createMany({
+        data: civicPropositions.map((p) => ({ ...p, questionnaireId: civicCompass.id })),
+      }),
+      this.prisma.question.createMany({
+        data: quickPropositions.map((p) => ({ ...p, questionnaireId: quickCompass.id })),
+      }),
+      this.prisma.question.createMany({
+        data: digitalPropositions.map((p) => ({ ...p, questionnaireId: digitalAge.id })),
+      }),
+    ]);
+
+    return {
+      message: 'Seeded 3 questionnaires with propositions',
+      questionnaires: [
+        { slug: 'civic-compass', questions: civicResult.count },
+        { slug: 'quick-compass', questions: quickResult.count },
+        { slug: 'digital-age', questions: digitalResult.count },
+      ],
+      totalQuestions: civicResult.count + quickResult.count + digitalResult.count,
+    };
   }
 }
