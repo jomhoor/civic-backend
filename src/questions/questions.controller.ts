@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req } from '@nestjs/common';
-import { QuestionsService } from './questions.service';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { QuestionsService } from './questions.service';
 
 @Controller('questions')
 export class QuestionsController {

@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Param, UseGuards, Req, Query } from '@nestjs/common';
-import { PokeService } from './poke.service';
+import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PokeService } from './poke.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('poke')
