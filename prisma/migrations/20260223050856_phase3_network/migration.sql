@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "displayName" TEXT,
+ADD COLUMN     "matchThreshold" DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+ADD COLUMN     "sharingMode" TEXT NOT NULL DEFAULT 'GHOST';

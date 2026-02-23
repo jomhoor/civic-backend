@@ -10,6 +10,7 @@ import { ResponsesModule } from './responses/responses.module';
 import { CompassModule } from './compass/compass.module';
 import { WalletModule } from './wallet/wallet.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { MatchmakingModule } from './matchmaking/matchmaking.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     CompassModule,
     WalletModule,
     SchedulerModule,
+    MatchmakingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
