@@ -66,6 +66,7 @@ services:
       - "3000"
     environment:
       NODE_ENV: production
+      SERVER_API_URL: http://civic-backend:3001/api
     depends_on:
       - civic-backend
     networks:
