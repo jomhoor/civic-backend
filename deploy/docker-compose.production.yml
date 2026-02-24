@@ -1,5 +1,5 @@
 # Civic Compass — Production Deployment
-# Domain: civic.jomhoor.org
+# Domain: compass.jomhoor.org
 #
 # Usage:
 #   cp .env.production.example .env.production
@@ -8,7 +8,7 @@
 #
 # First-time SSL:
 #   docker compose -f docker-compose.production.yml run --rm certbot certonly \
-#     --webroot -w /var/www/certbot -d civic.jomhoor.org --agree-tos -m YOUR_EMAIL
+#     --webroot -w /var/www/certbot -d compass.jomhoor.org --agree-tos -m YOUR_EMAIL
 #   docker compose -f docker-compose.production.yml restart nginx
 
 services:
@@ -43,7 +43,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-civic}:${POSTGRES_PASSWORD}@civic-db:5432/civic_compass?schema=public
       PORT: "3001"
-      WEB_URL: https://civic.jomhoor.org
+      WEB_URL: https://compass.jomhoor.org
       JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: production
     depends_on:
@@ -58,7 +58,7 @@ services:
       context: ./web
       dockerfile: Dockerfile.production
       args:
-        NEXT_PUBLIC_API_URL: https://civic.jomhoor.org/api
+        NEXT_PUBLIC_API_URL: https://compass.jomhoor.org/api
         NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${WALLETCONNECT_PROJECT_ID:-a052c1015dacc65b7a10401568d76b33}
     container_name: civic-web
     restart: unless-stopped

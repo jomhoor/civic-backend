@@ -3,7 +3,7 @@ set -e
 
 # ══════════════════════════════════════════════════════════
 # Civic Compass — Production Deployment
-# Domain: civic.jomhoor.org
+# Domain: compass.jomhoor.org
 # ══════════════════════════════════════════════════════════
 #
 # First-time setup:
@@ -17,7 +17,7 @@ set -e
 
 DEPLOY_DIR="/opt/civic-compass"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOMAIN="civic.jomhoor.org"
+DOMAIN="compass.jomhoor.org"
 
 COMPOSE="docker compose -f $DEPLOY_DIR/docker-compose.production.yml --env-file $DEPLOY_DIR/.env.production"
 
@@ -200,7 +200,7 @@ case "${1:-help}" in
   *)
     echo "╔══════════════════════════════════════╗"
     echo "║   Civic Compass — Deployment CLI     ║"
-    echo "║   https://civic.jomhoor.org          ║"
+    echo "║   https://compass.jomhoor.org          ║"
     echo "╚══════════════════════════════════════╝"
     echo ""
     echo "Usage: $0 <command>"
