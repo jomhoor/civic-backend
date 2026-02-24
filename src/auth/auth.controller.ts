@@ -1,5 +1,5 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
-import { IsString, IsBoolean, IsOptional } from 'class-validator';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 

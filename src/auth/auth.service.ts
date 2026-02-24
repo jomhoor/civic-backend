@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
-import { SiweMessage } from 'siwe';
 import { randomBytes } from 'crypto';
+import { SiweMessage } from 'siwe';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
