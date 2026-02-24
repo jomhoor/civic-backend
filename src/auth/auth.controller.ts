@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -50,11 +50,14 @@ export class AuthController {
   }
 
   /**
-   * Legacy wallet auth (kept for backwards compatibility / dev mode).
-   * Will be removed once SIWE is fully adopted.
+   * Legacy wallet auth (dev mode only).
+   * Disabled in production — use SIWE verify instead.
    */
   @Post('wallet')
   async walletAuth(@Body() dto: WalletAuthDto) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('This endpoint is disabled in production. Use SIWE authentication.');
+    }
     const user = await this.authService.findOrCreateUser(
       dto.walletAddress,
       dto.isSmartWallet ?? false,

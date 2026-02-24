@@ -13,10 +13,14 @@ export interface JwtPayload {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(configService: ConfigService) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret && configService.get<string>('NODE_ENV') === 'production') {
+      throw new Error('JWT_SECRET must be set in production');
+    }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET', 'civic-compass-dev-secret'),
+      secretOrKey: secret || 'civic-compass-dev-secret',
     });
   }
 
