@@ -1,0 +1,109 @@
+# Civic Compass — Production Deployment
+# Domain: civic.jomhoor.org
+#
+# Usage:
+#   cp .env.production.example .env.production
+#   # Fill in secrets in .env.production
+#   docker compose -f docker-compose.production.yml up -d --build
+#
+# First-time SSL:
+#   docker compose -f docker-compose.production.yml run --rm certbot certonly \
+#     --webroot -w /var/www/certbot -d civic.jomhoor.org --agree-tos -m YOUR_EMAIL
+#   docker compose -f docker-compose.production.yml restart nginx
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────
+  civic-db:
+    image: postgres:16-alpine
+    container_name: civic-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-civic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: civic_compass
+    volumes:
+      - civic_pgdata:/var/lib/postgresql/data
+    networks:
+      - civic
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-civic} -d civic_compass"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── NestJS Backend ───────────────────────────────────────
+  civic-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    container_name: civic-backend
+    restart: unless-stopped
+    expose:
+      - "3001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-civic}:${POSTGRES_PASSWORD}@civic-db:5432/civic_compass?schema=public
+      PORT: "3001"
+      WEB_URL: https://civic.jomhoor.org
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: production
+    depends_on:
+      civic-db:
+        condition: service_healthy
+    networks:
+      - civic
+
+  # ── Next.js Frontend ─────────────────────────────────────
+  civic-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.production
+      args:
+        NEXT_PUBLIC_API_URL: https://civic.jomhoor.org/api
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${WALLETCONNECT_PROJECT_ID:-a052c1015dacc65b7a10401568d76b33}
+    container_name: civic-web
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - civic-backend
+    networks:
+      - civic
+
+  # ── Nginx Reverse Proxy ─────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: civic-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - civic-web
+      - civic-backend
+    networks:
+      - civic
+
+  # ── Certbot (SSL) ───────────────────────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: civic-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - civic
+
+networks:
+  civic:
+    driver: bridge
+
+volumes:
+  civic_pgdata:
