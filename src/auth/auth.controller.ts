@@ -75,6 +75,15 @@ export class AuthController {
   }
 
   /**
+   * Create a guest account (no wallet needed).
+   * Returns a user + JWT so the guest can answer questionnaires.
+   */
+  @Post('guest')
+  async guestAuth() {
+    return this.authService.createGuestUser();
+  }
+
+  /**
    * Get the current authenticated user's profile.
    * Protected by JWT guard.
    */

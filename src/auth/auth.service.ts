@@ -111,6 +111,38 @@ export class AuthService {
     });
   }
 
+  /**
+   * Create a guest user (no wallet required).
+   * Uses a unique placeholder wallet address so the user can still
+   * answer questionnaires and view results. They can later upgrade
+   * to a full wallet-connected account.
+   */
+  async createGuestUser() {
+    const guestId = randomBytes(8).toString('hex');
+    const guestWallet = `guest-${guestId}`;
+
+    const user = await this.prisma.user.create({
+      data: {
+        walletAddress: guestWallet,
+        isSmartWallet: false,
+        wallet: {
+          create: {
+            polygonAddress: guestWallet,
+            walletType: 'guest',
+          },
+        },
+      },
+      include: { wallet: true },
+    });
+
+    const token = this.jwtService.sign({
+      sub: user.id,
+      wallet: guestWallet,
+    });
+
+    return { user, token };
+  }
+
   async getUserById(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },
