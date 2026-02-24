@@ -18,6 +18,7 @@ model User {
   displayName           String?
   sharingMode           String         @default("GHOST")
   matchThreshold        Float          @default(0.8)
+  chatPublicKey         String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
   responses             UserResponse[]
@@ -28,6 +29,8 @@ model User {
   receivedConnections   ConnectionRequest[] @relation("ReceivedConnections")
   sentPokes             Poke[]         @relation("SentPokes")
   receivedPokes         Poke[]         @relation("ReceivedPokes")
+  sentMessages          EncryptedMessage[] @relation("SentEncryptedMessages")
+  receivedMessages      EncryptedMessage[] @relation("ReceivedEncryptedMessages")
 }
 
 model Demographics {
@@ -145,6 +148,22 @@ model Poke {
 
   @@unique([senderId, receiverId])  // one poke per direction per pair
   @@index([receiverId, seen])
+}
+
+model EncryptedMessage {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  ciphertext String   // Base64-encoded encrypted content
+  nonce      String   // Base64-encoded nonce (24 bytes)
+  seen       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender     User     @relation("SentEncryptedMessages", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedEncryptedMessages", fields: [receiverId], references: [id])
+
+  @@index([receiverId, createdAt])
+  @@index([senderId, receiverId, createdAt])
 }
 
 

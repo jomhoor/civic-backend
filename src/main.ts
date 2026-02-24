@@ -1,9 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Security headers
+  app.use(
+    helmet({
+      // CSP is handled by the frontend (Next.js); disable here to avoid
+      // the default helmet CSP (which includes upgrade-insecure-requests)
+      // from breaking http:// API calls in development.
+      contentSecurityPolicy: false,
+      // CORS is handled separately below
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   app.enableCors({
     origin: process.env.WEB_URL ?? 'http://localhost:3000',

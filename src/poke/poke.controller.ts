@@ -7,13 +7,6 @@ import { PokeService } from './poke.service';
 export class PokeController {
   constructor(private readonly pokeService: PokeService) {}
 
-  /** Send a poke to another user */
-  @Post(':targetUserId')
-  async sendPoke(@Req() req: any, @Param('targetUserId') targetUserId: string) {
-    const senderId = req.user.userId;
-    return this.pokeService.sendPoke(senderId, targetUserId);
-  }
-
   /** Get all received pokes */
   @Get()
   async getReceivedPokes(@Req() req: any) {
@@ -37,5 +30,12 @@ export class PokeController {
   @Get('status/:targetUserId')
   async getPokeStatus(@Req() req: any, @Param('targetUserId') targetUserId: string) {
     return this.pokeService.getPokeStatus(req.user.userId, targetUserId);
+  }
+
+  /** Send a poke to another user — MUST be last (wildcard param) */
+  @Post(':targetUserId')
+  async sendPoke(@Req() req: any, @Param('targetUserId') targetUserId: string) {
+    const senderId = req.user.userId;
+    return this.pokeService.sendPoke(senderId, targetUserId);
   }
 }

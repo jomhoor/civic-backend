@@ -5,6 +5,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ChatModule } from './chat/chat.module';
 import { CompassModule } from './compass/compass.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { PokeModule } from './poke/poke.module';
@@ -30,6 +31,7 @@ import { WalletModule } from './wallet/wallet.module';
     MatchmakingModule,
     AnalyticsModule,
     PokeModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
