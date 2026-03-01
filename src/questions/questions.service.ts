@@ -119,8 +119,8 @@ export class QuestionsService {
 
   /**
    * Seed all questionnaires and their questions.
-   * Creates 5 questionnaires: Civic Compass (80), Quick Compass (16), Digital Age Dilemmas (24),
-   * The Political Compass (62), 9 Axes Values (36).
+   * Creates 6 questionnaires: Civic Compass (80), Quick Compass (16), Digital Age Dilemmas (24),
+   * The Political Compass (62), 9 Axes Values (36), Snapshot Compass (8).
    */
   async seedCalibrationQuestions(force = false) {
     if (force) {
@@ -205,6 +205,19 @@ export class QuestionsService {
         questionCount: 36,
         active: false,
         order: 5,
+      },
+    });
+
+    const snapshotCompass = await this.prisma.questionnaire.create({
+      data: {
+        slug: 'snapshot-compass',
+        title: 'Snapshot Compass',
+        titleFa: 'قطب‌نمای فوری',
+        description: 'Just 8 questions — one per axis. Get a quick read on your civic identity in under 2 minutes.',
+        descriptionFa: 'فقط ۸ سؤال — یکی در هر محور. در کمتر از ۲ دقیقه تصویری از هویت مدنی خود بگیرید.',
+        icon: 'Target',
+        questionCount: 8,
+        order: 0,
       },
     });
 
@@ -497,8 +510,20 @@ export class QuestionsService {
       { text: 'Multilingual government services and multicultural education enrich a society.', weights: { society: 0.5, diplomacy: 0.5, civil_liberties: 0.3 }, order: 36 },
     ];
 
+    // ── Snapshot Compass — 8 questions, 1 per axis ──
+    const snapshotPropositions = [
+      { text: 'The government should actively redistribute wealth from the rich to the poor.', weights: { economy: -0.9 }, order: 1 },
+      { text: 'A strong central authority is more effective than distributed democratic decision-making.', weights: { governance: -0.9 }, order: 2 },
+      { text: 'People should be free to say anything, even if others find it deeply offensive.', weights: { civil_liberties: 0.9 }, order: 3 },
+      { text: 'Traditional family structures and social norms are essential for a stable society.', weights: { society: -0.9 }, order: 4 },
+      { text: 'My country\'s interests should always come before international cooperation.', weights: { diplomacy: -0.9 }, order: 5 },
+      { text: 'Economic growth must be sacrificed when it conflicts with environmental protection.', weights: { environment: 0.9 }, order: 6 },
+      { text: 'Harsh punishment is more effective at reducing crime than rehabilitation programs.', weights: { justice: -0.9 }, order: 7 },
+      { text: 'Governments should be able to access private communications to prevent crime and terrorism.', weights: { technology: -0.9, civil_liberties: -0.4 }, order: 8 },
+    ];
+
     // Create all questions with their questionnaire IDs
-    const [civicResult, quickResult, digitalResult, compassResult, nineAxesResult] = await Promise.all([
+    const [civicResult, quickResult, digitalResult, compassResult, nineAxesResult, snapshotResult] = await Promise.all([
       this.prisma.question.createMany({
         data: civicPropositions.map((p) => ({ ...p, questionnaireId: civicCompass.id })),
       }),
@@ -514,18 +539,22 @@ export class QuestionsService {
       this.prisma.question.createMany({
         data: nineAxesPropositions.map((p) => ({ ...p, questionnaireId: nineAxes.id })),
       }),
+      this.prisma.question.createMany({
+        data: snapshotPropositions.map((p) => ({ ...p, questionnaireId: snapshotCompass.id })),
+      }),
     ]);
 
     return {
-      message: 'Seeded 5 questionnaires with propositions',
+      message: 'Seeded 6 questionnaires with propositions',
       questionnaires: [
+        { slug: 'snapshot-compass', questions: snapshotResult.count },
         { slug: 'civic-compass', questions: civicResult.count },
         { slug: 'quick-compass', questions: quickResult.count },
         { slug: 'digital-age', questions: digitalResult.count },
         { slug: 'political-compass', questions: compassResult.count },
         { slug: 'nine-axes', questions: nineAxesResult.count },
       ],
-      totalQuestions: civicResult.count + quickResult.count + digitalResult.count + compassResult.count + nineAxesResult.count,
+      totalQuestions: civicResult.count + quickResult.count + digitalResult.count + compassResult.count + nineAxesResult.count + snapshotResult.count,
     };
   }
 }
